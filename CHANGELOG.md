@@ -1,44 +1,46 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## 2026-03-24
 
-## [0.2.0] - 2026-02-26
+### Runtime and routing
 
-### Fixed
-- `start_codex.sh`: Added `set -euo pipefail` and return code checks, no longer falsely reports success
-- `pane_monitor.sh`: Fixed `if ! ... & then` syntax error causing wake failure detection to never trigger
-- `on_complete.py`: Changed `stdout/stderr=PIPE` to `DEVNULL` for fire-and-forget agent wake (prevents EPIPE)
-- `stop_codex.sh`: Added proper quoting for PID file reads
-- `pane_monitor.sh`: PID file auto-cleanup on exit via `trap cleanup EXIT`
-- `standard_task.md`: Fixed send-keys examples to use separate text and Enter (with sleep 1s)
-- `knowledge_update.md`: Fixed `cache/` path to `/tmp/codex-knowledge-cache/` with auto `mkdir`
-- `SKILL.md`: Updated chat ID references from hardcoded to environment variables
-- `state/version.txt`: Added trailing newline
+- Added a managed runtime registry under `~/.openclaw/runtime/codex-agent`
+- Added session helpers:
+  - [`runtime/session_store.sh`](/Users/abel/project/codex-agent/runtime/session_store.sh)
+  - [`runtime/list_sessions.sh`](/Users/abel/project/codex-agent/runtime/list_sessions.sh)
+  - [`runtime/session_status.sh`](/Users/abel/project/codex-agent/runtime/session_status.sh)
+- Added one-shot execution entrypoint: [`hooks/run_codex.sh`](/Users/abel/project/codex-agent/hooks/run_codex.sh)
+- Switched OpenClaw wakeups to explicit `--session-id`
+- Added wake dedupe and private runtime logging helpers in [`hooks/hook_common.sh`](/Users/abel/project/codex-agent/hooks/hook_common.sh)
 
-### Added
-- `INSTALL.md`: Complete 7-step installation guide with troubleshooting
-- `README_EN.md`: Full English README with language switcher
-- Environment variable support: `CODEX_AGENT_CHAT_ID` and `CODEX_AGENT_NAME` (no code changes needed for deployment)
-- `on_complete.py`: Telegram notify now checks exit code and logs stderr on failure
-- `pane_monitor.sh`: Increased capture lines from 15 to 30, added more approval keywords
-- `pane_monitor.sh`: Per-session log file (`/tmp/codex_monitor_<session>.log`)
-- `start_codex.sh`: Pre-flight check for `codex` binary
-- `stop_codex.sh`: Precise `pkill` regex to avoid killing unrelated processes
-- OpenClaw session reset configuration note in README and INSTALL.md
+### Bug fixes
 
-### Changed
-- All README references changed from "Agent" to "OpenClaw" for clarity
-- Quick start section now points users to read `INSTALL.md` first
-- Send-to-OpenClaw prompt updated to reference INSTALL.md for auto-configuration
+- Fixed startup false-positive by teaching the monitor to detect:
+  - Codex self-update prompt
+  - Codex directory trust prompt
+- Fixed interactive startup to launch Codex through a clean non-profile shell inside tmux, so broken shell init or conda activation no longer blocks the TUI before Codex starts
+- Fixed approval detection drift with a dedicated pane classifier in [`hooks/pane_state.sh`](/Users/abel/project/codex-agent/hooks/pane_state.sh)
+- Fixed monitor PID handling by moving PID files out of `/tmp` and into the private runtime directory
+- Fixed notification routing and session merging in [`hooks/on_complete.py`](/Users/abel/project/codex-agent/hooks/on_complete.py)
+- Reduced external data leakage by sanitizing completion previews before sending them to chat channels or agent wake messages
 
-## [0.1.0] - 2026-02-25
+### Documentation refresh
 
-### Added
-- Initial release
-- SKILL.md: 8-step workflow engine for OpenClaw to operate Codex CLI
-- Dual-channel notification: Codex notify hook (`on_complete.py`) + tmux pane monitor (`pane_monitor.sh`)
-- One-click start/stop scripts (`start_codex.sh`, `stop_codex.sh`)
-- Knowledge base: 6 files covering features, config schema, capabilities, prompt patterns, update protocol, changelog
-- Workflows: standard task execution + knowledge base update (7-step process with 5-tier data sources)
-- Two approval modes: Codex auto (`--full-auto`) or OpenClaw approval
-- tmux persistence: Codex runs independent of OpenClaw turn lifecycle
+- Rebased the project docs on:
+  - local `codex` CLI `0.116.0-alpha.10`
+  - local `openclaw` CLI `2026.3.11`
+  - current OpenAI Codex docs
+  - current OpenClaw docs
+- Removed outdated assumptions about:
+  - `gpt-5.2` being the default model
+  - `steer`, `collaboration_modes`, and `sqlite` being active Codex features
+  - “daily 4am” OpenClaw session resets
+- Documented the current OpenClaw docs-vs-local-CLI mismatch around skills installation
+
+### Validation
+
+- Added/updated [`tests/regression.sh`](/Users/abel/project/codex-agent/tests/regression.sh)
+- Verified with:
+  - `bash -n` on shell scripts
+  - `python3 -m py_compile hooks/on_complete.py`
+  - `bash tests/regression.sh`

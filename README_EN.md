@@ -1,234 +1,122 @@
-# Codex Agent — Let OpenClaw Operate Codex for You 🧠
+# Codex Agent
 
-**English** | [中文](README.md)
+A managed runtime layer that lets OpenClaw operate Codex CLI reliably instead of depending on ad-hoc tmux automation.
 
-> Lie in bed, say one sentence, and OpenClaw will launch Codex, craft prompts, handle approvals, check quality, and report results. You can jump into the terminal anytime.
+## Validated baseline
 
-**This is an [OpenClaw](https://github.com/openclaw/openclaw)-exclusive Skill.** It requires OpenClaw as the AI agent runtime, leveraging its agent wake-up, message delivery, and cron capabilities to drive the entire workflow.
+- Validation date: `2026-03-24`
+- Local Codex: `codex-cli 0.116.0-alpha.10`
+- Local OpenClaw: `OpenClaw 2026.3.11`
+- Local Codex defaults: `gpt-5.4`, `xhigh` reasoning, `web_search = "live"`
 
-## What Is It?
+## What this project now provides
 
-In one sentence: **OpenClaw operates Codex CLI on behalf of the user.**
+- Managed interactive Codex sessions via [`hooks/start_codex.sh`](/Users/abel/project/codex-agent/hooks/start_codex.sh)
+- Managed one-shot `codex exec` runs via [`hooks/run_codex.sh`](/Users/abel/project/codex-agent/hooks/run_codex.sh)
+- A runtime registry under `~/.openclaw/runtime/codex-agent`
+- Explicit OpenClaw routing with stable `--session-id`
+- Detection of modern Codex startup blockers:
+  - self-update prompt
+  - directory trust prompt
+- Private logs and private monitor PID files
+- Sanitized completion previews in external notifications
 
-Codex is OpenAI's terminal coding tool. It's powerful, but requires you to sit at your computer — writing prompts, watching output, approving commands, checking results. This skill lets OpenClaw do all of that for you.
+## Why the refresh was necessary
 
-It comes down to two things: **tmux + hooks**.
+The repository had drifted badly:
 
-- **tmux**: Codex runs in a tmux session. OpenClaw reads output and sends commands through tmux — exactly like a human would in the terminal
-- **hooks**: When Codex finishes a task or waits for approval, it automatically notifies the user (Telegram) + wakes up OpenClaw to handle it
+- `state/version.txt` was still on `0.104.0`
+- docs still treated `gpt-5.2` as the default model
+- removed Codex flags such as `steer`, `collaboration_modes`, and `sqlite` were still documented as current
+- OpenClaw session reset behavior was described incorrectly
+- startup monitoring did not recognize the current Codex update/trust blockers
 
-You can `tmux attach` at any time to see what Codex is doing, or even take over.
+## Design stance
 
-## Full-Power Codex
+This repo learned from `/Users/abel/project/claude-code-agent`, but does not copy Claude-specific control flow.
 
-Normal usage: you manually write a prompt and send it to Codex. Codex only knows what you tell it.
+Borrowed ideas:
 
-With this skill, OpenClaw does the following **before** sending a task to Codex:
+- stable `session_key`
+- stable `openclaw_session_id`
+- runtime session registry
+- explicit status/list tooling
+- wake dedupe
 
-1. **Scans the local environment**: Which MCP servers are installed (Exa search, Chrome control, etc.), which Skills, which models are available
-2. **Selects the right model**: Fast model for simple bugs, powerful model for architecture design, code-specific model for code search
-3. **Crafts the prompt**: Not forwarding the user's raw message, but constructing an optimal prompt based on the knowledge base + prompt pattern library — telling Codex what tools it can use, how to break down the task, what format to output
-4. **Enables appropriate feature flags**: Such as `multi_agent`, `web_search`, `shell_snapshot`, etc., enabled as needed
+Not copied blindly:
 
-This means Codex receives a **carefully designed task that fully utilizes all local capabilities**, not a casual one-liner from the user.
+- Claude hook lifecycle
+- Claude permission callback model
+- Claude-specific handoff semantics
 
-## What Problem Does It Solve?
+## Main entry points
 
-Normal Codex workflow:
+- [`hooks/start_codex.sh`](/Users/abel/project/codex-agent/hooks/start_codex.sh)
+- [`hooks/run_codex.sh`](/Users/abel/project/codex-agent/hooks/run_codex.sh)
+- [`hooks/pane_monitor.sh`](/Users/abel/project/codex-agent/hooks/pane_monitor.sh)
+- [`hooks/on_complete.py`](/Users/abel/project/codex-agent/hooks/on_complete.py)
+- [`runtime/list_sessions.sh`](/Users/abel/project/codex-agent/runtime/list_sessions.sh)
+- [`runtime/session_status.sh`](/Users/abel/project/codex-agent/runtime/session_status.sh)
+- [`tests/regression.sh`](/Users/abel/project/codex-agent/tests/regression.sh)
 
-```
-Sit at computer → Open terminal → Think about prompt → Start Codex → Watch output →
-Approve commands → Not satisfied? Start over → Done
-```
+## Recommended workflows
 
-With this skill:
-
-```
-Lie in bed → Tell OpenClaw in Telegram "Add XX feature to this project" →
-OpenClaw starts Codex → Handles everything in between → Notifies you on Telegram when done →
-Not satisfied? Say one sentence to continue → Want to watch? tmux attach for live view
-```
-
-**Core value: User is the boss, OpenClaw is the employee, Codex is the tool.**
-
-## Workflow
-
-```
-1. User gives task (Telegram / terminal / any channel)
-     ↓
-2. OpenClaw understands requirements, asks clarifying questions
-     ↓
-3. OpenClaw designs prompt, selects execution mode, confirms with user
-     ↓
-4. OpenClaw launches Codex in tmux
-     ↓
-5. Codex works, OpenClaw gets woken up via hooks:
-   ├── Task complete → OpenClaw checks output quality
-   │   ├── Satisfied → Notifies user on Telegram with results
-   │   └── Not satisfied → Tells Codex to keep working
-   ├── Waiting for approval → OpenClaw decides approve/reject
-   └── Directional issue → Immediately asks user for confirmation
-     ↓
-6. User receives final result
-   (can tmux attach at any point during the process)
-```
-
-OpenClaw handles the entire process autonomously, but **every step is simultaneously sent to Telegram** — task completion, approval requests, output content — all visible on your phone in real time. You can choose to ignore it (let OpenClaw handle it) or jump in and intervene at any time.
-
-## How It Works: tmux + hooks
-
-### tmux: Operating the Terminal Like a Human
-
-OpenClaw operates Codex exactly like a human would:
+### Interactive long-running work
 
 ```bash
-# Start Codex (same as typing in terminal)
-tmux send-keys -t codex-session 'codex --full-auto' Enter
-
-# Send prompt (same as typing)
-tmux send-keys -t codex-session 'Implement XX feature'
-sleep 1
-tmux send-keys -t codex-session Enter
-
-# Check output (same as looking at the screen)
-tmux capture-pane -t codex-session -p
+bash hooks/start_codex.sh codex-agent-demo /absolute/workdir --full-auto
 ```
 
-Benefits of tmux:
-- **Not limited by OpenClaw turn timeout**: Codex can run as long as needed; OpenClaw checks in when woken up
-- **User can join anytime**: `tmux attach -t codex-session` to see real-time output
-- **Persistent**: OpenClaw restart, network disconnect — Codex keeps running
-
-### Hooks: Automatic Notifications for Task Completion and Approval Requests
-
-Two mechanisms cover two types of events:
-
-**1. Codex notify hook (task completion)**
-
-Codex's built-in `notify` config calls a script when a task is done:
-
-```
-Codex completes turn → on_complete.py
-                       ├── 📱 Telegram notifies user (full Codex reply)
-                       └── 🤖 Wakes OpenClaw (auto-checks output)
-```
-
-Users see Codex's complete reply on Telegram — essentially real-time monitoring.
-
-**2. tmux pane monitor (approval requests)**
-
-Codex's notify doesn't cover approval scenarios, so `pane_monitor.sh` monitors tmux output:
-
-```
-Codex shows approval prompt → pane_monitor.sh detects keywords
-                              ├── 📱 Telegram notifies user (specific command awaiting approval)
-                              └── 🤖 Wakes OpenClaw (auto-decides approve/reject)
-```
-
-Both mechanisms **trigger dual channels simultaneously**: user and OpenClaw both receive the message. User can ignore it (OpenClaw will handle it) or reply directly to intervene.
-
-### User Can Take Over Anytime
-
-This is not a black box. At any time:
-
-- `tmux attach -t codex-session`: See exactly what Codex is doing
-- Type directly in tmux: Take over operation
-- `tmux detach`: Done watching, hand back to OpenClaw
-
-## Two Approval Modes
-
-User chooses before launch:
-
-| Mode | Who Approves | Use Case |
-|------|-------------|----------|
-| **Codex auto** (`--full-auto`) | Codex decides | Routine dev, hands-off |
-| **OpenClaw approves** (default) | OpenClaw decides approve/reject | Sensitive ops, need oversight |
-
-Pane monitor runs in both modes (`--full-auto` occasionally still prompts for approval).
-
-## Knowledge Base: OpenClaw Truly Understands Codex
-
-OpenClaw doesn't blindly forward commands. It maintains a Codex knowledge base:
-
-| File | Content |
-|------|---------|
-| `features.md` | 30+ feature flags, slash commands, CLI subcommands |
-| `config_schema.md` | Complete config.toml field definitions |
-| `capabilities.md` | Local MCP/Skills/model capabilities |
-| `prompting_patterns.md` | Prompt pattern library (by task type) |
-| `UPDATE_PROTOCOL.md` | 5-tier data source update protocol |
-| `changelog.md` | Version changes + findings from testing |
-
-The knowledge base gets stale, so there's an update protocol: triggered by version change / >7 days / manual request, updating from CLI introspection → Schema → GitHub → Official docs → Community sources.
-
-## File Structure
-
-```
-codex-agent/
-├── SKILL.md                    # OpenClaw workflow instructions (for OpenClaw to read)
-├── README.md                   # Chinese docs (for humans)
-├── README_EN.md                # English docs (this file)
-├── INSTALL.md                  # Installation guide (7 steps)
-│
-├── hooks/
-│   ├── on_complete.py          # Codex done → Telegram + wake OpenClaw
-│   ├── pane_monitor.sh         # Approval detection → Telegram + wake OpenClaw
-│   ├── start_codex.sh          # One-click start (Codex + monitor)
-│   └── stop_codex.sh           # One-click cleanup
-│
-├── knowledge/                  # Codex knowledge base (6 files)
-├── workflows/                  # Detailed workflows
-├── references/                 # CLI command reference
-└── state/                      # Runtime state (version, last updated)
-```
-
-## Quick Start
-
-See **[INSTALL.md](INSTALL.md)** for detailed setup (7 steps, ~5 minutes).
-
-Or, send this message to your OpenClaw and it will auto-configure everything:
-
-> Please install and configure the codex-agent skill.
-> First read the full installation guide at `~/.openclaw/workspace/skills/codex-agent/INSTALL.md`, then follow the steps to complete the setup.
-> If the file doesn't exist yet, first clone from https://github.com/dztabel-happy/codex-agent to `~/.openclaw/workspace/skills/codex-agent/`, then read INSTALL.md and execute.
-
-After setup, just say something to OpenClaw in Telegram:
-
-> "Use Codex to add XX feature to /path/to/project"
-
-## Update
-
-Already installed? Update to the latest version:
+Inspect or attach:
 
 ```bash
-cd ~/.openclaw/workspace/skills/codex-agent
-git pull
+bash runtime/list_sessions.sh
+bash runtime/session_status.sh codex-agent-demo
+tmux attach -t codex-agent-demo
 ```
 
-See **[CHANGELOG.md](CHANGELOG.md)** for what's new.
+Stop:
 
-## Prerequisites
+```bash
+bash hooks/stop_codex.sh codex-agent-demo
+```
 
-- [OpenClaw](https://github.com/openclaw/openclaw) installed and running
-- [Codex CLI](https://github.com/openai/codex) installed
-- tmux installed
-- Telegram configured as OpenClaw message channel
-- ⚠️ **OpenClaw session auto-reset must be disabled or extended** (default daily reset loses Codex task context, see [INSTALL.md](INSTALL.md))
+### Non-interactive automation
 
-## Known Issues & Workarounds
+```bash
+bash hooks/run_codex.sh /absolute/workdir --full-auto "Summarize the repository state."
+```
 
-| Issue | Solution |
-|-------|----------|
-| OpenClaw daily session reset loses long task context | Disable auto-reset (see INSTALL.md) |
-| tmux send-keys text + Enter together, Codex unresponsive | Send separately with sleep 1s in between |
-| `--full-auto` conflicts with shell alias | Check `~/.bashrc` / `~/.zshrc` for codex aliases |
-| Codex notify doesn't cover approval waits | pane_monitor.sh fills the gap |
-| `--full-auto` occasionally still prompts | pane monitor runs in all modes |
-| Codex memories don't work | `disable_response_storage = true` + custom provider incompatible |
-| Notify payload missing field docs | `turn-id` and `cwd` discovered through testing |
+## Important upstream mismatch
 
-## Roadmap
+OpenClaw’s latest docs describe a richer skills/ClawHub workflow, but the local `openclaw skills` command on this machine still exposes only `list`, `info`, and `check`.
 
-- [ ] Port pattern to Claude Code / OpenCode agent
-- [ ] Add more prompt patterns (code review, architecture design)
-- [ ] pane monitor: detect more approval patterns
+This repo therefore documents two truths at once:
+
+- official docs for product direction
+- local CLI output for what is actually runnable today
+
+When those disagree, installation and operational docs prefer the locally verified path.
+
+## Setup
+
+See [INSTALL.md](https://github.com/dztabel-happy/codex-agent/blob/main/INSTALL.md).
+
+The three quickest verification commands are:
+
+```bash
+codex --version
+openclaw --version
+bash tests/regression.sh
+```
+
+## Primary references
+
+- [Codex CLI features](https://developers.openai.com/codex/cli/features)
+- [Codex CLI reference](https://developers.openai.com/codex/cli/reference)
+- [Codex config reference](https://developers.openai.com/codex/config-reference)
+- [OpenAI latest model guide](https://developers.openai.com/api/docs/guides/latest-model)
+- [OpenClaw configuration reference](https://docs.openclaw.ai/gateway/configuration-reference)
+- [OpenClaw agent CLI](https://docs.openclaw.ai/cli/agent)
+- [OpenClaw skills CLI](https://docs.openclaw.ai/cli/skills)
+- [OpenClaw onboard CLI](https://docs.openclaw.ai/cli/onboard)

@@ -1,203 +1,107 @@
-# Codex 本机能力清单
+# Local capabilities snapshot
 
-> 最后更新: 2026-02-25
+校验日期：`2026-03-24`
 
-## 基本信息
+## Codex
 
-- **版本**: 0.104.0
-- **默认模型**: gpt-5.2
-- **默认推理强度**: xhigh
-- **Provider**: custom (http://127.0.0.1:23000/v1, Responses API)
-- **个性**: friendly
-- **网页搜索**: live（实时）
-- **沙盒**: 未显式设置（交互模式默认按审批策略）
+- 版本：`codex-cli 0.116.0-alpha.10`
+- 默认模型：`gpt-5.4`
+- 默认推理强度：`xhigh`
+- 默认网页搜索：`live`
+- 默认 personality：`friendly`
 
-## 已安装 MCP Servers
+当前本机确认可用的核心子命令：
 
-| 名称 | 类型 | 说明 |
-|------|------|------|
-| `ace-tool` | stdio (npx) | ACE MCP 工具 |
-| `exa` | stdio (npx) | Exa 搜索引擎（web_search, deep_search, code_context, company_research, crawling, linkedin, deep_researcher） |
-| `chrome-mcp-server` | stdio (node) | Chrome 浏览器控制 |
+- `codex`
+- `codex exec`
+- `codex review`
+- `codex resume`
+- `codex fork`
+- `codex mcp`
+- `codex features`
+- `codex sandbox`
+- `codex app`
 
-## 已安装 Skills
+## OpenClaw
 
-> 通过 `/skills` 或 `$` 前缀在交互模式查看/调用。
-> 调用方式：在 prompt 中使用 `$skill_name 任务描述`
+- 版本：`2026.3.11`
+- 当前本机确认可用：
+  - `openclaw agent --session-id`
+  - `openclaw message send`
+  - `openclaw config file/get/set/unset/validate`
+  - `openclaw onboard`
+  - `openclaw docs`
+  - `openclaw skills list/info/check`
 
-### Skill 系统详解
+### 本机与官方文档的差异
 
-**目录扫描位置**（优先级从高到低）：
+官方 docs 已经描述更完整的 skills / ClawHub 体系，但本机 CLI 目前还没有暴露 `openclaw skills install` 这类安装子命令。
 
-| 作用域 | 路径 | 说明 |
-|--------|------|------|
-| REPO | `$CWD/.agents/skills/` | 当前目录 |
-| REPO | 上级到 repo root 的 `.agents/skills/` | 仓库共享 |
-| USER | `$HOME/.agents/skills/` | 用户级 |
-| ADMIN | `/etc/codex/skills/` | 系统级 |
-| SYSTEM | Codex 内置 | OpenAI 官方 |
+因此本项目当前采取的原则是：
 
-**渐进式加载**：Codex 启动时只读 name + description，使用时才加载完整 SKILL.md。
+- 设计理念参考官方最新文档
+- 安装步骤以本机 CLI 真正能执行的路径为准
 
-**Skill 结构**：
-```
-my-skill/
-├── SKILL.md           # 必需：指令 + 元数据
-├── scripts/           # 可选：可执行脚本
-├── references/        # 可选：参考文档
-├── assets/            # 可选：模板资源
-└── agents/
-    └── openai.yaml    # 可选：UI元数据 + 依赖声明
-```
+## 本机 MCP 能力
 
-**调用方式**：
-- 显式：`$skill-name 任务描述` 或 `/skills` 选择
-- 隐式：Codex 根据 description 自动匹配
+来自 `codex mcp list` 的已启用服务：
 
-**管理**：
-- 安装：`$skill-installer install the xxx skill`
-- 创建：`$skill-creator`
-- 禁用（不删除）：在 config.toml 中：
-  ```toml
-  [[skills.config]]
-  path = "/path/to/skill/SKILL.md"
-  enabled = false
-  ```
+| 名称 | 类型/入口 | 用途 |
+|------|-----------|------|
+| `ace-tool` | stdio | 代码上下文搜索 |
+| `chrome-devtools` | stdio | DevTools 浏览器控制 |
+| `chrome-mcp-server` | stdio | 浏览器桥接与页面操作 |
+| `exa` | stdio | 语义搜索 / 页面抓取 / 研究 |
+| `grok-search` | stdio | 实时搜索 / 抓取 |
+| `playwright` | stdio | 浏览器自动化 |
+| `scrape-do` | stdio | 强抓取 / 反爬 / 渲染页 |
 
-**openai.yaml 元数据**：
-```yaml
-interface:
-  display_name: "显示名"
-  icon_small: "./assets/icon.svg"
-  brand_color: "#3B82F6"
-  default_prompt: "默认提示词"
-policy:
-  allow_implicit_invocation: false  # 禁止隐式调用
-dependencies:
-  tools:
-    - type: "mcp"
-      value: "server-name"
-      transport: "streamable_http"
-      url: "https://..."
-```
+注意：
 
-## 已开启的 Feature Flags
+- 文档里只记录“服务名与能力”，不记录本机任何密钥。
+- 能不能用，以 `codex mcp list` 的启用状态和实际调用结果为准。
 
-```
-undo, shell_tool, unified_exec, shell_snapshot, js_repl, child_agents_md,
-apply_patch_freeform, enable_request_compression, multi_agent,
-skill_mcp_dependency_install, steer, collaboration_modes, personality,
-request_rule(⚠️ removed，应清理)
-```
+## codex-agent 自己新增的运行时能力
 
-## Codex 自带记忆系统（memories）
+### Interactive runtime
 
-**状态**：❌ 不建议开启
+- [`hooks/start_codex.sh`](/Users/abel/project/codex-agent/hooks/start_codex.sh)
+- [`hooks/pane_monitor.sh`](/Users/abel/project/codex-agent/hooks/pane_monitor.sh)
+- [`hooks/stop_codex.sh`](/Users/abel/project/codex-agent/hooks/stop_codex.sh)
 
-原因：
-1. `disable_response_storage = true` 禁用了服务端存储，memories 无法持久化
-2. Custom provider 代理不保证 Responses API 的 thread 持久化兼容性
-3. 切换上游供应商后 phase_1/phase_2 模型可能不可用
-4. 我们已有 OpenClaw 三层记忆系统，功能更强且不依赖供应商
+### Non-interactive runtime
 
-如需要：`[features] memories = true` + `[memories]` 配置 phase_1_model/phase_2_model
+- [`hooks/run_codex.sh`](/Users/abel/project/codex-agent/hooks/run_codex.sh)
 
-> 通过 custom provider 代理，具体可用模型取决于代理配置。
+### Session registry
 
-| 模型 | 推荐场景 | 切换方式 |
-|------|---------|---------|
-| gpt-5.2 (默认) | 大多数任务 | 已是默认 |
-| gpt-5.2 xhigh | 复杂推理、关键决策 | `/model gpt-5.2 xhigh`（已是默认） |
-| gpt-5.2 high | 平衡质量与速度 | `/model gpt-5.2 high` |
-| gpt-5.2 medium | 简单任务、节省 token | `/model gpt-5.2 medium` |
+- [`runtime/session_store.sh`](/Users/abel/project/codex-agent/runtime/session_store.sh)
+- [`runtime/list_sessions.sh`](/Users/abel/project/codex-agent/runtime/list_sessions.sh)
+- [`runtime/session_status.sh`](/Users/abel/project/codex-agent/runtime/session_status.sh)
 
-> ⚠️ 注意 config.toml 中有模型迁移提示：
-> - `gpt-5.2` → `gpt-5.3-codex`
-> - `gpt-5.1-codex-max` → `gpt-5.2-codex`
+### Current runtime guarantees
 
-## 模型选择策略
+- 每个受管会话有稳定 `session_key`
+- 每个受管会话有稳定 `openclaw_session_id`
+- 日志和 PID 文件进入私有 runtime 目录
+- `on_complete.py` 外发摘要默认脱敏
+- monitor 能识别 update / trust / approval 三类关键阻塞
 
-| 任务类型 | 推荐配置 |
-|---------|---------|
-| 简单修改/格式化 | gpt-5.2 medium |
-| 常规开发 | gpt-5.2 high |
-| 复杂架构/超难 bug | gpt-5.2 xhigh（当前默认） |
-| 代码审查 | 可用 `review_model` 单独配置 |
+## 当前推荐模型策略
 
-## 已信任的项目目录
+参考依据：
 
-```
-/Users/abel
-/Users/abel/project/claude-code-hub
-/Users/abel/project/cold-sim-opt
-/Users/abel/project/work_notebook_ob
-/Users/abel/project/test2
-/Users/abel/project
-/Users/abel/.cache/opencode/node_modules/oh-my-opencode-slim/dist
-```
+- 本机默认配置
+- [Codex CLI features](https://developers.openai.com/codex/cli/features)
+- [Using GPT-5.4](https://developers.openai.com/api/docs/guides/latest-model)
 
-## 提示词增强策略
+建议：
 
-### Skill 调用
-```
-$skill_name 任务描述
-```
-例：`$xlsx 读取 data.xlsx 并提取第三列`
+| 场景 | 推荐 |
+|------|------|
+| 默认编码 / 调试 / 重构 | `gpt-5.4` |
+| 简单低风险修改 | `gpt-5.4` + `low`/`medium` reasoning |
+| 架构设计 / 高风险迁移 / 深度排障 | `gpt-5.4` + `high`/`xhigh` reasoning |
+| 需要显式并行拆分任务 | 明确在 prompt 中要求 subagents / multiple agents |
 
-### 模型切换（交互模式）
-```
-/model gpt-5.2 xhigh
-```
-
-### MCP 工具调用
-Codex 会根据 prompt 自动调用已配置的 MCP 工具，也可显式提示：
-```
-使用 exa 搜索 "XXX" 的最新信息
-```
-
-### 多智能体详解
-
-**启用**：`[features] multi_agent = true`（已开启）
-
-**工作方式**：
-- Codex 自动决定何时 spawn 子 agent，也可手动要求
-- 子 agent 并行运行，Codex 等待所有结果后统一返回
-- 子 agent 继承当前沙盒策略，但使用非交互审批
-
-**管理命令**：
-- `/agent` — 查看/切换活跃线程
-- 可直接要求 Codex steer/stop/close 子 agent
-
-**内置角色**：
-- `default` — 通用
-- `worker` — 工作线程
-- `explorer` — 代码探索
-
-**自定义角色**：
-```toml
-[agents]
-max_depth = 3       # 最大嵌套
-max_threads = 5     # 最大并发
-
-[agents.reviewer]
-description = "代码审查，关注安全和正确性"
-config_file = "agents/reviewer.toml"
-```
-
-角色配置文件可覆盖：`model`、`model_reasoning_effort`、`sandbox_mode`、`developer_instructions` 等。
-
-**示例用法**：
-```
-对当前 PR 进行审查，每个维度 spawn 一个 agent：
-1. 安全问题
-2. 代码质量
-3. Bug
-4. 竞态条件
-5. 测试稳定性
-```
-
-### 协作模式
-```
-/plan     # 切换到 Plan 模式（只分析不执行）
-/collab   # 切换协作模式
-```
+不要再把 `gpt-5.2` 写成默认。

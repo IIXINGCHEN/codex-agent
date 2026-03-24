@@ -1,82 +1,136 @@
-# Codex 知识库更新协议
+# Knowledge update protocol
 
-## 更新触发时机
+## 触发条件
 
-1. **版本变更时**：每次使用前检查 `codex --version`，与 `../state/version.txt` 对比，版本变了立即触发更新
-2. **定期更新**：距 `../state/last_updated.txt` 超过 7 天时触发
-3. **手动触发**：涛哥要求时
+满足任一条件就应更新知识库：
 
-## 数据源（信任度从高到低）
+1. `codex --version` 与 [`state/version.txt`](/Users/abel/project/codex-agent/state/version.txt) 不一致
+2. `openclaw --version` 出现明显变化
+3. 官方文档与本机 CLI 输出冲突
+4. 运行中复现了新的启动 / 审批 / 路由 bug
+5. 用户明确要求“按最新官方文档全面检查”
 
-### 来源 1：CLI 本机输出（真相来源，反映实际安装版本）
+## 证据优先级
+
+### 1. 本机 CLI 输出
+
+这是“这台机器今天到底能做什么”的最高优先级来源。
 
 ```bash
-codex --version                    # 当前版本
-codex features list                # 全部 feature flags + 成熟度 + 状态
-codex --help                       # CLI 参数
-codex mcp list                     # 已配置的 MCP servers（在交互模式下用 /mcp）
-codex exec --help                  # exec 模式参数
-codex review --help                # review 模式参数
+codex --version
+codex features list
+codex --help
+codex exec --help
+codex review --help
+codex resume --help
+codex fork --help
+codex mcp list
+
+openclaw --version
+openclaw --help
+openclaw agent --help
+openclaw skills --help
+openclaw config --help
+openclaw onboard --help
 ```
 
-### 来源 2：JSON Schema（结构化真相）
+### 2. 官方 OpenAI 文档
 
+- <https://developers.openai.com/codex/cli/features>
+- <https://developers.openai.com/codex/cli/reference>
+- <https://developers.openai.com/codex/config-reference>
+- <https://developers.openai.com/codex/feature-maturity>
+- <https://developers.openai.com/api/docs/guides/latest-model>
+
+### 3. 官方 OpenClaw 文档
+
+- <https://docs.openclaw.ai/gateway/configuration-reference>
+- <https://docs.openclaw.ai/cli/agent>
+- <https://docs.openclaw.ai/cli/skills>
+- <https://docs.openclaw.ai/cli/onboard>
+
+### 4. 本地实测
+
+- `bash tests/regression.sh`
+- 必要时再做一次真实 smoke test：
+  - `bash hooks/start_codex.sh ...`
+  - `bash hooks/run_codex.sh ...`
+
+### 5. 同类项目
+
+`/Users/abel/project/claude-code-agent` 只作为设计灵感来源：
+
+- 可借鉴 runtime/session 管理方法
+- 不可把 Claude 专用工作流直接抄过来
+
+## 交叉验证规则
+
+以下内容必须至少两条路径验证：
+
+- 版本号
+- feature 是否还存在
+- 配置键是否仍合法
+- 默认值是否变化
+- OpenClaw skills/session 行为
+- Codex 模型推荐
+
+推荐组合：
+
+- Codex feature / CLI：本机 CLI + OpenAI 官方 docs
+- OpenClaw 配置 / session：本机 CLI + OpenClaw docs
+- 运行时 bug：本机复现 + 回归测试
+
+## 更新步骤
+
+### Step 1. 收集当前事实
+
+把关键输出记录下来：
+
+```bash
+codex --version
+codex features list
+codex mcp list
+openclaw --version
+openclaw skills --help
 ```
-https://raw.githubusercontent.com/openai/codex/main/codex-rs/core/config.schema.json
+
+### Step 2. 读取官方文档
+
+优先读取直接页面，不要只看搜索摘要。
+
+### Step 3. 标记冲突
+
+如果出现“官方文档说有，但本机 CLI 没有”的情况，必须记录为：
+
+- 官方能力：已存在/已文档化
+- 本机状态：当前不可用或未暴露
+- 本项目处理：采用本机可执行路径
+
+### Step 4. 更新文件
+
+通常要更新这些文件：
+
+- [`README.md`](/Users/abel/project/codex-agent/README.md)
+- [`README_EN.md`](/Users/abel/project/codex-agent/README_EN.md)
+- [`INSTALL.md`](/Users/abel/project/codex-agent/INSTALL.md)
+- [`SKILL.md`](/Users/abel/project/codex-agent/SKILL.md)
+- `knowledge/*.md`
+- [`references/codex-cli-reference.md`](/Users/abel/project/codex-agent/references/codex-cli-reference.md)
+- [`CHANGELOG.md`](/Users/abel/project/codex-agent/CHANGELOG.md)
+- [`state/version.txt`](/Users/abel/project/codex-agent/state/version.txt)
+- [`state/last_updated.txt`](/Users/abel/project/codex-agent/state/last_updated.txt)
+
+### Step 5. 重新验证
+
+```bash
+bash -n hooks/*.sh runtime/*.sh tests/regression.sh
+python3 -m py_compile hooks/on_complete.py
+bash tests/regression.sh
 ```
 
-config.toml 的完整 JSON Schema，包含所有字段定义、类型、枚举值、描述。
+## 写作准则
 
-### 来源 3：GitHub 源码（最新实现细节）
-
-```
-https://api.github.com/repos/openai/codex/contents/docs          # 文档目录
-https://raw.githubusercontent.com/openai/codex/main/docs/<file>   # 具体文档
-https://api.github.com/repos/openai/codex/releases?per_page=10   # 版本发布
-https://raw.githubusercontent.com/openai/codex/main/codex-rs/tui/src/slash_command.rs  # 斜杠命令源码
-```
-
-### 来源 4：官方文档站（结构化，但可能滞后）
-
-```
-https://developers.openai.com/codex/overview
-https://developers.openai.com/codex/config-reference
-https://developers.openai.com/codex/config-basic
-https://developers.openai.com/codex/config-advanced
-https://developers.openai.com/codex/config-sample
-https://developers.openai.com/codex/changelog
-https://developers.openai.com/codex/skills
-https://developers.openai.com/codex/multi-agent
-https://developers.openai.com/codex/guides/agents-md
-https://developers.openai.com/codex/noninteractive
-https://developers.openai.com/codex/custom-prompts
-https://developers.openai.com/codex/security
-https://developers.openai.com/codex/cli/slash-commands
-```
-
-> ⚠️ 注意：`web_fetch` 对官方文档站被拦截，需要用 `browser` 工具或 `curl` 访问。
-
-### 来源 5：社区（实验性功能线索，需验证）
-
-- GitHub Issues/Discussions: `https://github.com/openai/codex/issues`
-- Reddit: `https://www.reddit.com/r/codex/`
-
-## 更新流程
-
-1. 跑 CLI 获取本机实际状态（version + features list + help）
-2. 拉取 JSON Schema，与本地 cache 做 diff
-3. 抓取 GitHub releases，提取最近变更
-4. （可选）浏览官方文档站，补充 CLI/Schema 未覆盖的内容
-5. （可选）搜索社区，发现未公开的实验性功能
-6. 更新 `features.md`：新增标 [NEW]，废弃标 [DEPRECATED]，社区来源标 [UNVERIFIED]
-7. 更新 `config_schema.md`：同步字段变更
-8. 更新 `capabilities.md`：检查本机 skills、MCP、模型变化
-9. 更新 `changelog.md`：记录本次变更摘要
-10. 如有推荐开启的新 feature → 生成 config.toml patch → 报告涛哥确认后应用
-11. 更新 `../state/version.txt` 和 `../state/last_updated.txt`
-
-## 校验规则
-
-- 所有写入 features.md 的功能必须能在 `codex features list` 或 JSON Schema 中找到佐证
-- 社区来源信息必须标注 [UNVERIFIED]，在 CLI/Schema 中验证后才能去掉标记
-- config.toml 修改建议必须通过 JSON Schema 校验类型和枚举值
+- 先写“本机实测事实”，再写“官方方向”
+- 不保留已经 removed 的 feature 叙事
+- 不继续扩散旧默认值
+- 不在文档里泄露本机 secrets / API keys

@@ -1,112 +1,131 @@
-# Codex CLI 完整命令参考
+# Codex CLI reference snapshot
 
-## 全局选项
+来源：
 
-| 选项 | 说明 |
+- 本机 `codex --help`
+- 本机 `codex exec --help`
+- 本机 `codex review --help`
+- 本机 `codex resume --help`
+- 本机 `codex fork --help`
+- [Codex CLI reference](https://developers.openai.com/codex/cli/reference)
+
+校验日期：`2026-03-24`
+
+## 顶层命令
+
+| 命令 | 用途 |
+|------|------|
+| `codex` | 启动交互式 CLI |
+| `codex exec` | 非交互式执行 |
+| `codex review` | 非交互式代码审查 |
+| `codex resume` | 恢复交互式会话 |
+| `codex fork` | 分叉交互式会话 |
+| `codex mcp` | 管理 MCP server |
+| `codex features` | 查看/修改 feature flags |
+| `codex sandbox` | 在 Codex 沙盒策略下执行命令 |
+| `codex app` | 启动桌面应用 |
+
+## 交互式常用参数
+
+| 参数 | 说明 |
 |------|------|
 | `-m, --model <MODEL>` | 指定模型 |
-| `-c, --config <key=value>` | 覆盖 config.toml 配置（TOML 格式） |
+| `-c, --config <key=value>` | 覆盖配置 |
 | `-C, --cd <DIR>` | 指定工作目录 |
-| `-i, --image <FILE>...` | 附加图片 |
-| `-s, --sandbox <MODE>` | 沙盒模式：`read-only` / `workspace-write` / `danger-full-access` |
-| `-a, --ask-for-approval <POLICY>` | 审批策略：`untrusted` / `on-request` / `never` |
-| `--full-auto` | 等价于 `-a on-request --sandbox workspace-write` |
-| `--dangerously-bypass-approvals-and-sandbox` | 无沙盒无审批（极危险） |
-| `--search` | 启用实时网络搜索 |
+| `-s, --sandbox <MODE>` | `read-only` / `workspace-write` / `danger-full-access` |
+| `-a, --ask-for-approval <POLICY>` | `untrusted` / `on-request` / `never` |
+| `--full-auto` | 低摩擦自动执行预设 |
+| `--search` | 开启 live web search |
 | `--add-dir <DIR>` | 额外可写目录 |
-| `--no-alt-screen` | 禁用备用屏幕（tmux 友好，保留滚动历史） |
-| `--enable <FEATURE>` | 启用功能标志 |
-| `--disable <FEATURE>` | 禁用功能标志 |
-| `-p, --profile <PROFILE>` | 使用 config.toml 中的配置档案 |
-| `--oss` | 使用本地开源模型（LM Studio / Ollama） |
+| `--no-alt-screen` | 禁用备用屏幕，tmux 友好 |
 
-## 子命令
+## `codex exec`
 
-### `codex` （交互模式）
-启动完整 TUI 界面，支持多轮对话。
+最关键参数：
 
-```bash
-codex [OPTIONS] [PROMPT]
-```
+| 参数 | 说明 |
+|------|------|
+| `--full-auto` | 自动执行预设 |
+| `-C, --cd <DIR>` | 指定工作目录 |
+| `-o, --output-last-message <FILE>` | 输出最后一条消息到文件 |
+| `--json` | JSONL 事件流 |
+| `--ephemeral` | 不落地持久化 session |
+| `--output-schema <FILE>` | 约束最终输出结构 |
+| `--skip-git-repo-check` | 允许在非 git 目录运行 |
 
-### `codex exec` （一次性模式）
-非交互执行，完成后退出。
-
-```bash
-codex exec [OPTIONS] [PROMPT]
-```
-
-额外选项：
-- `--skip-git-repo-check`：允许在非 git 目录运行
-- `--ephemeral`：不持久化 session
-- `--json`：以 JSONL 格式输出事件
-- `-o, --output-last-message <FILE>`：将最后一条消息写入文件
-- `--output-schema <FILE>`：指定输出 JSON Schema
-
-### `codex review` （代码审查）
-非交互式代码审查。
+示例：
 
 ```bash
-codex review [OPTIONS] [PROMPT]
+codex exec --full-auto -C /path/to/repo -o /tmp/last.txt "Fix the failing test"
 ```
 
-选项：
-- `--uncommitted`：审查未提交的更改
-- `--base <BRANCH>`：对比指定分支
-- `--commit <SHA>`：审查指定 commit
+## `codex review`
 
-### `codex resume` / `codex fork`
-恢复或分叉之前的 session。
+| 参数 | 说明 |
+|------|------|
+| `--uncommitted` | 审查未提交改动 |
+| `--base <BRANCH>` | 基于指定分支审查 |
+| `--commit <SHA>` | 审查指定提交 |
+| `--title <TITLE>` | 为结果加标题 |
+
+## `codex resume`
+
+| 参数 | 说明 |
+|------|------|
+| `--last` | 恢复最近一次会话 |
+| `--all` | 不限制当前工作目录 |
+| `[SESSION_ID]` | 指定会话 ID |
+
+## `codex fork`
+
+| 参数 | 说明 |
+|------|------|
+| `--last` | 分叉最近一次会话 |
+| `--all` | 不限制当前工作目录 |
+| `[SESSION_ID]` | 指定会话 ID |
+
+## `codex features`
+
+常用：
 
 ```bash
-codex resume [--last]
-codex fork [--last]
+codex features list
+codex features enable unified_exec
+codex features disable shell_snapshot
 ```
 
-### 其他命令
-- `codex login` / `codex logout`：认证管理
-- `codex mcp`：MCP 服务器管理
-- `codex mcp-server`：将 Codex 作为 MCP server 启动
-- `codex app`：启动桌面应用
-- `codex sandbox`：在 Codex 沙盒中运行命令
-- `codex apply`：将最近的 diff 应用到本地
-- `codex cloud`：浏览 Codex Cloud 任务
-- `codex features`：查看功能标志
-- `codex debug`：调试工具
+## `codex mcp`
 
-## config.toml 常用配置
+常用：
 
-配置文件位置：`~/.codex/config.toml`
+```bash
+codex mcp list
+codex mcp get <name> --json
+codex mcp add <name> -- <command...>
+codex mcp add <name> --url <https-url>
+```
+
+## 当前最相关的配置键
 
 ```toml
-# 模型配置
-model_provider = "custom"
-model = "gpt-5.2"
-model_reasoning_effort = "medium"
+model = "gpt-5.4"
+model_reasoning_effort = "xhigh"
+web_search = "live"
+personality = "friendly"
+notify = ["python3", "/absolute/path/to/hooks/on_complete.py"]
 
-# 自定义 provider
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-base_url = "http://127.0.0.1:23000/v1"
-
-# 功能开关
 [features]
-multi_agent = true
-steer = true
+unified_exec = true
 shell_snapshot = true
-web_search_cached = true
-
-# 项目信任
-[projects."/path/to/project"]
-trust_level = "trusted"
+shell_tool = true
+undo = true
+multi_agent = true
+js_repl = true
 ```
 
-## Reasoning Effort 等级
+## 当前不应继续宣称的旧内容
 
-| 等级 | 说明 | 适用场景 |
-|------|------|----------|
-| `low` | 最快，最少思考 | 简单修改、格式调整 |
-| `medium` | 默认平衡 | 日常编码任务 |
-| `high` | 更深入思考 | 复杂逻辑、架构设计 |
-| `xhigh` | 最深入 | 困难 bug、复杂算法 |
+- 不要把 `gpt-5.2` 写成默认模型
+- 不要再把 `steer` 写成可用 flag
+- 不要再把 `collaboration_modes` 写成当前 feature
+- 不要再用 `web_search_cached` 作为推荐配置入口

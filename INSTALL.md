@@ -1,170 +1,200 @@
-# Codex Agent 安装与配置指南
+# Codex Agent 安装指南
 
-> 完整的手把手配置流程。也可以把本文件内容发给 OpenClaw，让它自动帮你配置。
+## 1. 前提条件
 
-## 前提条件
-
-- [OpenClaw](https://github.com/openclaw/openclaw) 已安装并运行（`openclaw gateway status` 显示 running）
-- [Codex CLI](https://github.com/openai/codex) 已安装（`codex --version`）
-- tmux 已安装（`tmux -V`）
-- Telegram 已配置为 OpenClaw 消息通道
-
-## 第一步：安装 Skill
-
-将 codex-agent 放到 OpenClaw 的 skills 目录：
+确保下面这些命令都能跑：
 
 ```bash
-# 方式 1：git clone
-cd ~/.openclaw/workspace/skills/
+codex --version
+openclaw --version
+tmux -V
+jq --version
+python3 --version
+```
+
+推荐最低校验基线：
+
+- Codex：`0.116.0-alpha.10` 或更新
+- OpenClaw：`2026.3.11` 或更新
+
+## 2. 安装 skill 到工作区
+
+当前这台机器上，`openclaw skills` 还没有暴露原生安装子命令，所以先用工作区安装法：
+
+```bash
+mkdir -p ~/.openclaw/workspace/skills
+cd ~/.openclaw/workspace/skills
 git clone https://github.com/dztabel-happy/codex-agent.git
-
-# 方式 2：手动复制（如果你已经下载了）
-cp -r /path/to/codex-agent ~/.openclaw/workspace/skills/codex-agent
 ```
 
-验证 skill 被识别：
+校验：
+
 ```bash
-ls ~/.openclaw/workspace/skills/codex-agent/SKILL.md
-# 应该存在
+test -f ~/.openclaw/workspace/skills/codex-agent/SKILL.md
+openclaw skills list | grep -i codex-agent || true
+openclaw skills check || true
 ```
 
-## 第二步：配置 Codex notify hook
+如果你已经把仓库放在别处，也可以直接软链或复制到 `~/.openclaw/workspace/skills/codex-agent`。
 
-编辑 Codex 配置文件 `~/.codex/config.toml`，添加 notify 字段：
+## 3. 配置 Codex notify hook
+
+编辑 `~/.codex/config.toml`，加入：
 
 ```toml
-notify = ["python3", "<SKILL_PATH>/hooks/on_complete.py"]
+notify = ["python3", "/Users/<you>/.openclaw/workspace/skills/codex-agent/hooks/on_complete.py"]
 ```
 
-其中 `<SKILL_PATH>` 替换为实际路径，例如：
-```toml
-notify = ["python3", "/Users/你的用户名/.openclaw/workspace/skills/codex-agent/hooks/on_complete.py"]
-```
+如果你已经有 `notify`，把这个脚本追加进去或改成你自己的绝对路径。
 
-## 第三步：配置通知目标
+Codex 官方配置参考把 `notify` 定义为“接收 Codex JSON payload 的命令数组”，这正是本项目完成通知的入口。
 
-有两种方式设置 Telegram Chat ID 和 agent 名称：
+## 4. 配置环境变量
 
-### 方式 A：环境变量（推荐，不改代码）
-
-在你的 `~/.zshrc` 或 `~/.bashrc` 中添加：
+推荐放进 `~/.zshrc` 或 `~/.bashrc`：
 
 ```bash
-export CODEX_AGENT_CHAT_ID="你的Chat_ID"
-export CODEX_AGENT_CHANNEL="telegram"   # 支持 telegram / discord / whatsapp / slack 等 OpenClaw 通道
-export CODEX_AGENT_NAME="main"          # OpenClaw agent 名称，通常是 main
+export CODEX_AGENT_CHAT_ID="your-chat-id"
+export CODEX_AGENT_CHANNEL="telegram"
+export CODEX_AGENT_NAME="main"
 ```
 
-然后 `source ~/.zshrc`。
+可选项：
 
-获取 Chat ID 的方法：给你的 OpenClaw bot 发一条消息，然后查看 OpenClaw 日志中的 chat_id。
-
-### 方式 B：直接修改代码
-
-编辑 `hooks/on_complete.py`，修改：
-```python
-CHAT_ID = os.environ.get("CODEX_AGENT_CHAT_ID", "你的Chat_ID")
-CHANNEL = os.environ.get("CODEX_AGENT_CHANNEL", "telegram")
-```
-
-编辑 `hooks/pane_monitor.sh`，修改：
 ```bash
-CHAT_ID="${CODEX_AGENT_CHAT_ID:-你的Chat_ID}"
-CHANNEL="${CODEX_AGENT_CHANNEL:-telegram}"
+export CODEX_AGENT_AUTO_TRUST="1"
 ```
 
-## 第四步：配置 OpenClaw session 重置
+`CODEX_AGENT_AUTO_TRUST=1` 只适用于你明确已经把目标目录当作可信目录的场景。否则保留默认 `0`，由监控器提示你手动确认。
 
-⚠️ **必须做**。OpenClaw 默认每天凌晨 4 点自动重置 session，会导致 Codex 长任务完成后 hook 唤醒 OpenClaw 时上下文全丢。
+## 5. 调整 OpenClaw session reset
 
-编辑 `~/.openclaw/openclaw.json`，添加或修改：
+这一项现在不要再按“每天凌晨 4 点重置”理解。
+
+当前 OpenClaw 官方配置文档和 docs 搜索结果都表明，session reset 的核心是 `session.reset.mode` 和 `idleMinutes`；当前文档默认空闲过期是 60 分钟。对于长任务，这通常太短。
+
+建议至少改到 24 小时，长任务较多的话改到 7 天：
 
 ```json
 {
   "session": {
     "reset": {
       "mode": "idle",
-      "idleMinutes": 52560000
+      "idleMinutes": 10080
     }
   }
 }
 ```
 
-这相当于设置 100 年后才重置（OpenClaw 没有 `mode: "off"` 选项）。你仍然可以随时用 `/new` 手动重置。
-
-然后重启 gateway：
-```bash
-openclaw gateway restart
-```
-
-## 第五步：设置脚本权限
+配置文件通常是：
 
 ```bash
-cd ~/.openclaw/workspace/skills/codex-agent/hooks/
-chmod +x on_complete.py pane_monitor.sh start_codex.sh stop_codex.sh
+openclaw config file
 ```
 
-## 第六步：验证安装
-
-依次运行以下命令，确保每一步都成功：
+改完后校验：
 
 ```bash
-# 1. Codex 可用
-codex --version
-
-# 2. tmux 可用
-tmux -V
-
-# 3. Telegram 通知可发送（替换 YOUR_CHAT_ID）
-openclaw message send --channel telegram --target YOUR_CHAT_ID --message "✅ codex-agent 通知测试"
-
-# 4. OpenClaw agent 可唤醒
-openclaw agent --agent main --message "✅ codex-agent 唤醒测试" --deliver --channel telegram --timeout 10
-
-# 5. Codex notify hook 可触发（在任意 git 目录下）
-cd /tmp && mkdir -p codex-test && cd codex-test && git init
-codex exec "say hello"
-# 你应该在 Telegram 上收到通知
+openclaw config validate
 ```
 
-## 第七步：使用
+如果你有运行中的 gateway，再按你的部署方式重启它。
 
-安装完成后，直接在 Telegram 里对 OpenClaw 说：
+## 6. 设置脚本权限
 
-> "用 Codex 帮我在 /path/to/project 实现 XX 功能"
-
-OpenClaw 会：
-1. 理解你的需求
-2. 设计提示词
-3. 在 tmux 里启动 Codex
-4. 中间过程自动处理
-5. 完成后 Telegram 通知你
-
-你随时可以 `tmux attach -t <session>` 接入查看。
-
----
-
-## 一键自动配置（发给 OpenClaw）
-
-如果你不想手动配置，把下面这段话发给 OpenClaw，它会自动帮你完成配置：
-
-```
-请帮我安装和配置 codex-agent skill。步骤：
-1. 将 codex-agent skill 安装到 ~/.openclaw/workspace/skills/codex-agent/
-2. 在 ~/.codex/config.toml 中添加 notify hook，路径指向 hooks/on_complete.py
-3. 设置环境变量 CODEX_AGENT_CHAT_ID 为我的 Telegram Chat ID
-4. 配置 OpenClaw session 不自动重置（idle + 52560000 分钟）
-5. 设置脚本执行权限
-6. 运行验证测试确认所有组件正常
-安装指南在 skills/codex-agent/INSTALL.md
+```bash
+cd ~/.openclaw/workspace/skills/codex-agent
+chmod +x hooks/*.sh runtime/*.sh tests/regression.sh
 ```
 
-## 故障排查
+`on_complete.py` 不要求可执行位，但设上也无妨：
 
-| 症状 | 检查 |
-|------|------|
-| Codex 完成后没收到通知 | 检查 `~/.codex/config.toml` 的 notify 路径是否正确 |
-| 收到通知但 OpenClaw 没反应 | 检查 `openclaw agent --agent main` 是否可用 |
-| pane monitor 没检测到审批 | 查看 `/tmp/codex_monitor_<session>.log` |
-| start_codex.sh 报错 | 检查 tmux 和 codex 是否安装，workdir 是否存在 |
-| `--full-auto` 报冲突 | 检查 `~/.zshrc` 是否有 codex alias |
+```bash
+chmod +x hooks/on_complete.py
+```
+
+## 7. 运行回归测试
+
+```bash
+cd ~/.openclaw/workspace/skills/codex-agent
+bash tests/regression.sh
+```
+
+这会验证至少这些关键点：
+
+- 私有日志权限
+- OpenClaw 唤醒使用显式 `--session-id`
+- pane 状态识别（update / trust / approval）
+- `start_codex.sh` 会登记 runtime session 与 monitor PID
+- `on_complete.py` 会脱敏摘要并保留显式路由
+
+## 8. 做一次真实 smoke test
+
+### 交互式
+
+```bash
+cd ~/.openclaw/workspace/skills/codex-agent
+bash hooks/start_codex.sh codex-agent-smoke /Users/<you>/project --full-auto
+```
+
+查看状态：
+
+```bash
+bash runtime/list_sessions.sh
+bash runtime/session_status.sh codex-agent-smoke
+```
+
+结束：
+
+```bash
+bash hooks/stop_codex.sh codex-agent-smoke
+```
+
+### 一次性执行
+
+```bash
+bash hooks/run_codex.sh /Users/<you>/project --full-auto "Reply with exactly: SMOKE_OK"
+```
+
+## 9. 常见问题
+
+### `start_codex.sh` 说启动成功，但 tmux 里还卡着
+
+先看：
+
+```bash
+bash runtime/session_status.sh <session>
+tmux attach -t <session>
+```
+
+当前仓库已经自动处理 Codex 的更新提示，并会识别 trust prompt；如果目录不可信且没开 `CODEX_AGENT_AUTO_TRUST=1`，状态里会显示等待 trust。
+
+当前版本还会用干净 shell bootstrap Codex，所以如果这里仍然失败，优先怀疑 Codex 本体、目录 trust、审批等待或真实运行错误，而不是你的交互 shell rc / conda init 抢先执行。
+
+### 没收到通知
+
+先检查：
+
+```bash
+grep notify ~/.codex/config.toml
+```
+
+再手动验证消息通道：
+
+```bash
+openclaw message send --channel telegram --target "$CODEX_AGENT_CHAT_ID" --message "codex-agent test"
+```
+
+### OpenClaw 被唤醒了，但上下文不对
+
+先看会话登记是否稳定：
+
+```bash
+bash runtime/session_status.sh <session>
+```
+
+确认里面的 `openclaw_session_id` 是固定值，并且 OpenClaw idle reset 没设置得太短。
+
+### `openclaw skills install` 不存在
+
+这不是你配置错了，而是当前本机 CLI 和最新文档存在版本差异。这个仓库现在默认采用“工作区安装 + `openclaw skills list/check` 校验”的方式。

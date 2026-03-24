@@ -1,129 +1,151 @@
-# Codex 提示词模式库
+# Prompting patterns for codex-agent
 
-> 最后更新: 2026-02-24
+校验来源：
 
-## 提示词设计原则
+- 本机 `codex --help`
+- 本机 `codex exec --help`
+- [Codex CLI features](https://developers.openai.com/codex/cli/features)
+- [Using GPT-5.4](https://developers.openai.com/api/docs/guides/latest-model)
 
-1. **明确任务边界**：告诉 Codex 做什么、不做什么
-2. **提供上下文**：相关文件路径、技术栈、约束条件
-3. **利用工具链**：根据任务显式调用 skills、MCP、搜索
-4. **分阶段执行**：复杂任务拆分为步骤，逐步确认
+## 设计原则
 
-## 标准任务模板
+1. 先明确执行模式，再写 prompt。
+2. 优先给 Codex 可执行的上下文，而不是泛泛描述。
+3. 需要最新事实时，明确要求它搜索并核实来源。
+4. 不再依赖旧文档里的 `/collab`、`gpt-5.2`、旧 feature flag 叙事。
 
-### 简单修改
+## 先选模式
 
-```
-在 <文件路径> 中，<具体修改描述>。
-修改后运行 <测试命令> 确认没有破坏。
-```
+| 场景 | 推荐入口 |
+|------|----------|
+| 长任务、需要中途审批/接管 | [`hooks/start_codex.sh`](/Users/abel/project/codex-agent/hooks/start_codex.sh) |
+| CI 风格、一次性执行 | [`hooks/run_codex.sh`](/Users/abel/project/codex-agent/hooks/run_codex.sh) |
+| 明确是代码审查 | `codex review` |
 
-### 新功能开发
+## 当前模型建议
 
-```
-在 <项目路径> 中实现 <功能描述>。
+默认：
 
-技术要求：
-- <具体要求1>
-- <具体要求2>
-
-参考文件：
-- <相关文件路径>
-
-完成后：
-1. 运行测试确认通过
-2. 显示 git diff 摘要
+```text
+gpt-5.4
 ```
 
-### Bug 修复
+建议的推理强度：
 
-```
-Bug 描述：<问题现象>
-复现步骤：<步骤>
-期望行为：<正确行为>
-
-请分析根因并修复。修复后：
-1. 验证 bug 已解决
-2. 确认没有引入新问题
-3. 简述修复方案
-```
-
-### 代码审查
-
-```
-/review
-```
-或非交互式：
-```bash
-codex review --base origin/main
-codex review --uncommitted
-```
-
-### 需要搜索的任务
-
-```
-$exa 搜索 <关键词> 了解最新的 <技术/方案>，然后基于搜索结果 <执行任务>
-```
-
-### 多文件重构
-
-```
-重构 <目录> 下的 <描述>。
-
-规则：
-- <重构规则>
-
-涉及文件：
-- <文件列表或 glob 模式>
-
-使用 /plan 模式先分析影响范围，确认后再执行。
-```
-
-## 提示词增强技巧
-
-### 利用 Codex 特有功能
-
-| 场景 | 技巧 |
+| 任务 | 建议 |
 |------|------|
-| 需要精确分析 | 先 `/plan` 分析，确认后再执行 |
-| 需要网络信息 | 确保 `web_search = "live"`，prompt 中提示搜索 |
-| 处理 Excel/数据 | `$skill_name` 显式调用 |
-| 浏览器操作 | 通过 chrome-mcp-server 操作 |
-| 深度搜索 | 通过 exa MCP 的 deep_search/deep_researcher |
-| 多步骤任务 | 明确步骤编号，每步完成后确认 |
+| 机械性修改 / 格式调整 | `low` |
+| 普通开发 / bug 修复 | `medium` 或 `high` |
+| 架构迁移 / 疑难排障 / 复杂研究 | `high` 或 `xhigh` |
 
-### 上下文管理
+## 模板
 
-| 场景 | 操作 |
-|------|------|
-| 上下文快满 | `/compact` 压缩历史 |
-| 需要引用文件 | `/mention <file>` 附带文件内容 |
-| 需要看当前状态 | `/status` 查看 token 用量 |
-| 需要看改动 | `/diff` 查看 git diff |
+### 1. Bug 修复
 
-### 模型切换时机
+```text
+在 <工作目录> 中修复以下问题：
 
-| 从 | 切到 | 时机 |
-|----|------|------|
-| xhigh | high | 前期分析完成，进入简单实现阶段 |
-| xhigh | medium | 重复性修改、格式化 |
-| high | xhigh | 遇到难题、架构决策 |
+问题现象：
+- <现象>
 
-## exec 模式提示词
+复现线索：
+- <日志 / 错误 / 触发步骤>
 
-```bash
-# 标准全自动执行
-codex exec --full-auto "任务描述"
-
-# 指定模型
-codex exec --full-auto -m gpt-5.2 "任务描述"
-
-# 指定工作目录
-codex exec --full-auto -C /path/to/project "任务描述"
-
-# 运行时覆盖配置
-codex exec --full-auto -c 'model_reasoning_effort="xhigh"' "任务描述"
-
-# 附带图片
-codex exec --full-auto -i screenshot.png "根据截图修复 UI"
+要求：
+- 先定位根因，再修改
+- 修改后运行相关验证
+- 最后给出变更摘要和风险
 ```
+
+### 2. 新功能
+
+```text
+在 <工作目录> 中实现 <功能描述>。
+
+约束：
+- <约束 1>
+- <约束 2>
+
+交付要求：
+- 修改代码
+- 运行相关测试或最小验证
+- 汇总受影响文件和潜在风险
+```
+
+### 3. 升级 / 现代化改造
+
+```text
+请先盘点当前实现中哪些地方已经过时，再按风险分组处理：
+
+1. 必须马上改，不改会出错
+2. 应该升级，否则持续漂移
+3. 可以保留，但要记录为已知限制
+
+执行时：
+- 先读取代码和配置
+- 对最新事实使用官方文档/官方页面核实
+- 不要盲目照搬其他项目
+```
+
+### 4. 需要联网核实
+
+```text
+请先搜索并核实最新官方文档，再继续执行。
+
+核实重点：
+- 版本号
+- 配置字段
+- feature/command 是否仍存在
+- 任何容易变化的默认值
+
+完成后再给出代码修改和验证结果。
+```
+
+## 关于 subagents
+
+官方 Codex CLI 文档已经把这类能力写成 “Subagents”，而且明确说明：
+
+- 只有你显式要求时才会 spawn
+- 会消耗更多 token 和工具调用
+
+因此 prompt 应该这样写：
+
+```text
+如果任务可被明显拆成互不冲突的子任务，请显式使用 subagents 并并行处理非阻塞部分。
+不要为了“显得高级”而无意义拆分。
+```
+
+## 关于网页搜索
+
+Codex 官方 CLI 文档当前说明：
+
+- 本地 CLI 默认有 first-party web search
+- 默认更偏向 cached
+- 显式 `--search` 或 `web_search = "live"` 用于最新事实
+
+而这台机器当前本地配置已经是：
+
+```toml
+web_search = "live"
+```
+
+因此提示词里仍建议明确写出：
+
+```text
+需要核实最新事实时，请优先查官方页面并做交叉验证。
+```
+
+## 当前确认可用的 CLI 工作流提示
+
+- 交互式：`codex --full-auto --no-alt-screen`
+- 非交互式：`codex exec --full-auto -o <file>`
+- 审查：`codex review --uncommitted` / `codex review --base <branch>`
+- 恢复：`codex resume --last`
+- 分叉：`codex fork --last`
+
+## 避免继续写进 prompt 的旧内容
+
+- 不要默认写 `gpt-5.2`
+- 不要默认写 `/collab`
+- 不要再把 `steer` 当可开关能力
+- 不要把 removed feature 当作现成工具
